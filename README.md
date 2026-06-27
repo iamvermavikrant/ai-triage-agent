@@ -132,14 +132,32 @@ Industry-standard eval framework with three metric groups:
 
 **HallucinationMetric** is especially important for RCA: a hallucinated file name or function sends engineers on a wild-goose chase.
 
-### Running the full eval suite
+### Running the eval suite
+
+Use the `--judge` flag to choose which judge to run:
 
 ```bash
-# Mock mode (no API key needed)
-python -m evals.harness
+# Run both judges together (default)
+python -m evals.harness --judge both
 
-# Real mode (requires ANTHROPIC_API_KEY, set MOCK_LLM=false in .env)
-MOCK_LLM=false python -m evals.harness
+# Custom LLM-as-judge only
+python -m evals.harness --judge custom
+
+# DeepEval only (GEval + Hallucination + Relevancy)
+python -m evals.harness --judge deepeval
+```
+
+By default everything runs in **mock mode** — no API key needed:
+```bash
+# Already set in .env
+MOCK_LLM=true
+```
+
+To run with real LLM calls, set `MOCK_LLM=false` and provide your API key:
+```bash
+# .env
+MOCK_LLM=false
+ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 Results are printed as two Rich tables (one per judge) and saved to `evals/reports/eval_report_{timestamp}.json`.
