@@ -14,7 +14,8 @@ what every term means, how to run it, and what to say during the interview.
 5. [Understanding the eval report](#5-understanding-the-eval-report)
 6. [The 5 test fixtures explained](#6-the-5-test-fixtures-explained)
 7. [What the critique column means](#7-what-the-critique-column-means)
-8. [How to explain this in 2 minutes](#8-how-to-explain-this-in-2-minutes)
+8. [What is real vs what is mocked](#8-what-is-real-vs-what-is-mocked)
+9. [How to explain this in 2 minutes](#9-how-to-explain-this-in-2-minutes)
 
 ---
 
@@ -46,9 +47,22 @@ fix? Who owns it? In software, this is written after an incident or test failure
 
 ### MCP (Model Context Protocol)
 An open standard (like a USB-C port for AI) that lets AI models call external
-tools in a structured way. We built an MCP server that exposes two tools:
-`fetch_test_logs` and `get_git_diff`. The AI agents call these tools to gather
-information before analysing anything.
+tools in a structured way.
+
+**What we built:** A real MCP server (`src/ai_triage_agent/mcp/server.py`) that
+follows the MCP spec and exposes two tools: `fetch_test_logs` and `get_git_diff`.
+You can start it with `python -m ai_triage_agent.mcp.server` and connect any
+MCP-compatible client (e.g. Claude Desktop) to it.
+
+**What is mocked:** The data *backends*. In production, `fetch_test_logs` would
+call your CI system's API and `get_git_diff` would call GitHub. For the demo
+we pass `backend="mock"` so the tools return realistic pre-written data instead.
+The server protocol, tool registration, and JSON schema are all real — only the
+data source is swapped.
+
+**Interview line:** "We built a real MCP server. The data backends are mocked for
+the demo, but the server itself is fully functional — swap the backend and it
+works against a real CI system."
 
 ### LangGraph
 A Python library for building multi-step AI pipelines where each step is a
@@ -181,10 +195,20 @@ Step 1: Load fixtures
       Each has: input (run_id, commit, branch) + ground_truth (correct RCA)
 
 Step 2: For each fixture — fetch inputs via MCP tools
+  │
+  │   The MCP server (src/ai_triage_agent/mcp/server.py) is REAL.
+  │   It follows the Model Context Protocol spec and exposes two registered tools.
+  │   backend="mock" swaps the data source — the server itself never changes.
+  │
   ├── fetch_test_logs(run_id="cuda_oom", backend="mock")
-  │     Returns: raw error log text (e.g. "CUDA out of memory at trainer.py:312")
+  │     Production: calls your CI system API
+  │     Demo:       returns hardcoded realistic error log text
+  │     Result:     "CUDA out of memory at trainer.py:312 — 14 GiB requested, 12 GiB free"
+  │
   └── get_git_diff(commit_sha="a3f1c2b9", backend="mock")
-        Returns: unified diff showing what lines changed
+        Production: calls GitHub API / git CLI
+        Demo:       returns hardcoded unified diff
+        Result:     "- BATCH_SIZE = 8\n+ BATCH_SIZE = 64"
 
 Step 3: Run the LangGraph triage pipeline
   │
@@ -464,7 +488,31 @@ senior DevOps engineer would suggest.
 
 ---
 
-## 8. How to explain this in 2 minutes
+## 8. What is real vs what is mocked
+
+A common interview question: *"Is this a real MCP server or did you just write
+mock functions?"*
+
+| Component | Real or Mock? | Details |
+|-----------|--------------|---------|
+| MCP server (`mcp/server.py`) | **Real** | Follows the MCP stdio spec; any MCP client can connect |
+| Tool registration + JSON schema | **Real** | `fetch_test_logs` and `get_git_diff` are proper MCP tools |
+| `fetch_test_logs` data | Mock in demo | Production: calls your CI system API |
+| `get_git_diff` data | Mock in demo | Production: calls GitHub API or `git show` |
+| LangGraph pipeline | **Real** | Three agents, conditional edges, shared state |
+| Claude LLM calls | Mock in demo | `MOCK_LLM=true` returns hardcoded responses; set `false` for real Claude |
+| Custom LLM-as-judge scoring | Mock in demo | Same switch — real mode calls `claude-opus-4-8` |
+| DeepEval metrics | Mock in demo | Real mode calls DeepEval with the actual LLM judge |
+| Eval harness (5 fixtures) | **Real** | Fixtures, scoring logic, report tables are all real code |
+| GitHub Actions CI | **Real** | `.github/workflows/ci.yml` runs lint, tests, and triage on failure |
+
+**The key point:** Everything is architected for production. Mock mode is a
+single environment variable (`MOCK_LLM=true`) that swaps data sources — it
+does not bypass, stub, or shortcut any of the actual pipeline logic.
+
+---
+
+## 9. How to explain this in 2 minutes
 
 Use this script during the interview:
 
@@ -473,9 +521,11 @@ Use this script during the interview:
 *"The AI Triage Agent automates root cause analysis for GPU test failures.*
 
 *When a CI test fails, the agent first fetches the error log and git diff using
-two MCP tools I built — fetch_test_logs and get_git_diff. These follow the
-Model Context Protocol, which is an open standard for giving AI models access
-to external data.*
+two tools exposed by an MCP server I built — fetch_test_logs and get_git_diff.
+MCP stands for Model Context Protocol, an open standard for giving AI models
+structured access to external data. The server itself is real and fully
+functional. For this demo the data backends are mocked — in production you
+would swap them to call your CI system and GitHub API.*
 
 *The data flows through a three-node LangGraph pipeline. The Log Analyzer
 reads the error log and classifies the failure — CUDA OOM, import error,
