@@ -40,7 +40,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    structlog.configure(processors=[structlog.dev.ConsoleRenderer()])
+    structlog.configure(
+        processors=[
+            structlog.stdlib.add_log_level,
+            structlog.processors.KeyValueRenderer(key_order=["event"]),
+        ]
+    )
     args = parse_args()
 
     console.rule("[bold blue]AI Triage Agent[/bold blue]")
@@ -49,14 +54,14 @@ def main() -> None:
     console.print(f"[dim]Branch:[/dim] {args.branch}\n")
 
     # ── Fetch inputs ──────────────────────────────────────────────────────
-    console.print("[yellow]► Fetching test logs...[/yellow]")
+    console.print("[yellow]>> Fetching test logs...[/yellow]")
     raw_log = fetch_test_logs(run_id=args.run_id, backend=args.log_backend)
 
-    console.print("[yellow]► Fetching git diff...[/yellow]")
+    console.print("[yellow]>> Fetching git diff...[/yellow]")
     git_diff = get_git_diff(commit_sha=args.commit, backend=args.diff_backend)
 
     # ── Run graph ─────────────────────────────────────────────────────────
-    console.print("[yellow]► Running triage pipeline...[/yellow]\n")
+    console.print("[yellow]>> Running triage pipeline...[/yellow]\n")
     final_state = triage_graph.invoke(
         {
             "run_id": args.run_id,

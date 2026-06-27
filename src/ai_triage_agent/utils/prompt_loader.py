@@ -10,7 +10,7 @@ from typing import Any
 import yaml
 
 
-_PROMPTS_PATH = Path(__file__).parents[4] / "config" / "prompts.yaml"
+_PROMPTS_PATH = Path(__file__).parents[3] / "config" / "prompts.yaml"
 
 
 @functools.lru_cache(maxsize=1)
