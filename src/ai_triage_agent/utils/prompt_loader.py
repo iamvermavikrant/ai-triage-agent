@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import functools
 from pathlib import Path
-from string import Template
 from typing import Any
 
 import yaml
@@ -25,11 +24,17 @@ def get_system_prompt(key: str) -> str:
     return data["prompts"][key]["system"].strip()
 
 
+class _SafeDict(dict):  # type: ignore[type-arg]
+    """Leaves unrecognised {keys} intact instead of raising KeyError."""
+    def __missing__(self, key: str) -> str:
+        return "{" + key + "}"
+
+
 def render_user_prompt(key: str, **kwargs: str) -> str:
-    """Return the user prompt for *key* with variables substituted."""
+    """Return the user prompt for *key* with {variables} substituted."""
     data = _load_raw()
     template_str = data["prompts"][key]["user_template"]
-    return Template(template_str).safe_substitute(**kwargs).strip()
+    return template_str.format_map(_SafeDict(**kwargs)).strip()
 
 
 def prompt_version(key: str) -> str:

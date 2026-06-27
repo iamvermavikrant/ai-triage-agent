@@ -41,26 +41,30 @@ def print_report(report: dict[str, Any]) -> None:
     # ── Per-fixture table: Custom judge ─────────────────────────────────
     console.print("\n[bold yellow]Custom LLM-as-Judge Results[/bold yellow]")
     t1 = Table(box=box.ROUNDED, show_lines=True)
-    t1.add_column("Fixture", style="bold", width=34)
+    t1.add_column("Fixture", style="bold", width=30)
+    t1.add_column("Failure Type", width=16)
     t1.add_column("Score", justify="center", width=7)
     t1.add_column("Pass", justify="center", width=6)
     t1.add_column("Priority", justify="center", width=9)
     t1.add_column("Time(s)", justify="right", width=8)
-    t1.add_column("Critique", width=48)
+    t1.add_column("Critique", width=55)
 
     for r in results:
         j = r["judgment"]
         score = j["weighted_total"]
         passed = j["pass"]
-        priority = r.get("rca_report", {}).get("priority", "-")
+        rca = r.get("rca_report", {})
+        priority = rca.get("priority", "-")
+        failure_type = r.get("log_analysis", {}).get("failure_type") or "-"
         color = "green" if passed else "red"
         t1.add_row(
             r["fixture_id"],
+            failure_type,
             f"[{color}]{score}[/{color}]",
             "[green]PASS[/green]" if passed else "[red]FAIL[/red]",
             priority,
             str(r["elapsed_s"]),
-            j.get("critique", "")[:80],
+            j.get("critique", ""),
         )
     console.print(t1)
 

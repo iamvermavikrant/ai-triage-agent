@@ -113,6 +113,7 @@ def run_fixture(
         "description": fixture.get("description", ""),
         "elapsed_s": elapsed,
         "rca_report": rca_report,
+        "log_analysis": final_state.get("log_analysis", {}),
         "judgment": judgment,
         "deepeval": deepeval_result,
         "pipeline_errors": errors,
