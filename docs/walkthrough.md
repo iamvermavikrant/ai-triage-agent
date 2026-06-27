@@ -10,12 +10,13 @@ what every term means, how to run it, and what to say during the interview.
 1. [What this project does in one sentence](#1-what-this-project-does-in-one-sentence)
 2. [Glossary — every term explained](#2-glossary--every-term-explained)
 3. [How to run it step by step](#3-how-to-run-it-step-by-step)
-4. [Full workflow walkthrough](#4-full-workflow-walkthrough)
-5. [Understanding the eval report](#5-understanding-the-eval-report)
-6. [The 5 test fixtures explained](#6-the-5-test-fixtures-explained)
-7. [What the critique column means](#7-what-the-critique-column-means)
-8. [What is real vs what is mocked](#8-what-is-real-vs-what-is-mocked)
-9. [How to explain this in 2 minutes](#9-how-to-explain-this-in-2-minutes)
+4. [LangGraph — what it is, why we used it, how it works here](#4-langgraph--what-it-is-why-we-used-it-how-it-works-here)
+5. [Full workflow walkthrough](#5-full-workflow-walkthrough)
+6. [Understanding the eval report](#6-understanding-the-eval-report)
+7. [The 5 test fixtures explained](#7-the-5-test-fixtures-explained)
+8. [What the critique column means](#8-what-the-critique-column-means)
+9. [What is real vs what is mocked](#9-what-is-real-vs-what-is-mocked)
+10. [How to explain this in 2 minutes](#10-how-to-explain-this-in-2-minutes)
 
 ---
 
@@ -185,7 +186,218 @@ pytest tests/ -v
 
 ---
 
-## 4. Full workflow walkthrough
+## 4. LangGraph — what it is, why we used it, how it works here
+
+### What is LangGraph in plain English?
+
+Think of LangGraph like an **assembly line in a factory**.
+
+In a car factory, a half-built car moves from Station 1 (engine) → Station 2
+(body) → Station 3 (paint). Each station does one specific job, adds something
+to the car, and passes it to the next. No station does everything — they
+specialise. If the engine station finds a defect, the car is pulled off the
+line early rather than continuing to waste time painting a broken car.
+
+LangGraph works exactly the same way, but instead of a car, you pass a
+**shared state object** (a Python dictionary). Each station is an **AI agent**
+(a Python function that calls Claude). Each agent reads what it needs from the
+state, adds its output, and passes the updated state forward.
+
+---
+
+### Why did we use LangGraph instead of just calling Claude once?
+
+You could ask Claude: *"Here is the error log and the git diff — tell me the
+root cause."* That works for simple cases. We used LangGraph because:
+
+| Problem with one big Claude call | How LangGraph solves it |
+|----------------------------------|------------------------|
+| Claude gets overwhelmed with too much text at once | Each agent focuses on one smaller task |
+| Hard to debug — which part of the analysis went wrong? | Each node produces its own structured JSON output you can inspect |
+| Can't stop early if an agent fails | Conditional edges skip remaining steps when an error is detected |
+| Prompt becomes a tangled mess of instructions | Each agent has its own clean, versioned system prompt |
+| Hard to swap out or improve one step independently | Each agent is a separate Python function — change one without touching others |
+
+A relatable analogy: imagine asking one person to read a 500-line error log,
+understand a code diff, figure out root cause, write a structured report, and
+score it — all in one go. vs. having a team of specialists: one person reads
+logs, one person reads the code change, and a senior engineer synthesises both
+into a report. The team approach is more reliable and easier to improve.
+
+---
+
+### The three agents in our pipeline
+
+```
+log_analyzer_node  →  diff_analyzer_node  →  rca_synthesizer_node
+```
+
+**Agent 1 — Log Analyzer** (`agents/log_analyzer.py`)
+- **Job:** Read the raw error log and extract structured facts
+- **Input from state:** `raw_log` (the full text of the CI error)
+- **Asks Claude:** "You are a log analyst. What type of failure is this?
+  How severe? Which files and stack frames are involved?"
+- **Writes to state:** `log_analysis` — a JSON object like:
+  ```json
+  {
+    "failure_type": "CUDA_OOM",
+    "severity": "CRITICAL",
+    "stack_frames": ["trainer.py:312", "test_model_training.py:88"],
+    "affected_modules": ["src/training/trainer.py"],
+    "reproducible": true
+  }
+  ```
+
+**Agent 2 — Diff Analyzer** (`agents/diff_analyzer.py`)
+- **Job:** Read the git diff and correlate it with what Agent 1 found
+- **Input from state:** `log_analysis` (from Agent 1) + `git_diff`
+- **Asks Claude:** "You are a change-impact analyst. Given this failure signal
+  and this code diff, which changed files are likely responsible? How risky
+  is this change?"
+- **Writes to state:** `diff_analysis` — a JSON object like:
+  ```json
+  {
+    "implicated_files": [{"file": "trainer.py", "relevance_score": 0.97}],
+    "change_risk": "HIGH",
+    "regression_likely": true,
+    "confidence": 0.95
+  }
+  ```
+
+**Agent 3 — RCA Synthesizer** (`agents/rca_synthesizer.py`)
+- **Job:** Combine both analyses into the final structured report
+- **Input from state:** `log_analysis` + `diff_analysis` + metadata
+  (branch, commit, test suite)
+- **Asks Claude:** "You are a principal SDET. Given this log analysis and this
+  diff analysis, write a complete RCA with root cause, fix, priority, and
+  preventive measures."
+- **Writes to state:** `rca_report` — the final output:
+  ```json
+  {
+    "title": "CUDA OOM: BATCH_SIZE increased 8x without VRAM analysis",
+    "root_cause": "trainer.py changed BATCH_SIZE from 8 to 64...",
+    "recommended_fix": "Revert to BATCH_SIZE=8 or use gradient accumulation",
+    "priority": "P1",
+    "estimated_fix_time": "2h",
+    "owner_hint": "ml-training team"
+  }
+  ```
+
+---
+
+### The shared state — the "baton" passed between agents
+
+Every agent receives the full state, adds its piece, and returns it.
+Think of it like a baton in a relay race that gets heavier as each runner
+adds something to it.
+
+```
+START
+  state = { run_id, raw_log, git_diff, commit_sha, branch, test_suite }
+      ↓
+log_analyzer_node runs
+  state now also has: { log_analysis: {...} }
+      ↓
+diff_analyzer_node runs  (reads log_analysis + git_diff)
+  state now also has: { diff_analysis: {...} }
+      ↓
+rca_synthesizer_node runs  (reads log_analysis + diff_analysis)
+  state now also has: { rca_report: {...} }
+      ↓
+END  →  harness reads final_state["rca_report"]
+```
+
+This is defined in `graph/state.py` as a Python `TypedDict`:
+```python
+class TriageState(TypedDict, total=False):
+    raw_log:       str          # input
+    git_diff:      str          # input
+    log_analysis:  dict         # written by Agent 1
+    diff_analysis: dict         # written by Agent 2
+    rca_report:    dict         # written by Agent 3
+    errors:        list[str]    # any agent can write here to signal failure
+    completed_nodes: list[str]  # tracks which agents have run
+```
+
+---
+
+### Conditional edges — the "early exit" safety valve
+
+After each agent runs, LangGraph checks: did something go wrong?
+
+```python
+# graph/workflow.py
+def _has_errors(state: TriageState) -> str:
+    return "end" if state.get("errors") else "continue"
+```
+
+This is called a **conditional edge**. It is like a quality check on the
+assembly line — if a defect is found, the car is pulled off rather than
+continuing. In our case:
+
+```
+log_analyzer runs
+    ↓
+_has_errors check
+    ├── errors found? → go to END (skip remaining agents, report the error)
+    └── no errors?   → continue to diff_analyzer
+                           ↓
+                       _has_errors check
+                           ├── errors found? → go to END
+                           └── no errors?   → continue to rca_synthesizer
+                                                  ↓
+                                              always → END
+```
+
+Without this, if the log was empty and Agent 1 failed, Agent 2 would still run
+with missing data and produce a garbage result. The conditional edges prevent
+that.
+
+---
+
+### Where is LangGraph called in the code?
+
+**1. Graph is built once** in `graph/workflow.py`:
+```python
+builder = StateGraph(TriageState)          # create the graph
+builder.add_node("log_analyzer", log_analyzer_node)   # register agents
+builder.add_node("diff_analyzer", diff_analyzer_node)
+builder.add_node("rca_synthesizer", rca_synthesizer_node)
+builder.set_entry_point("log_analyzer")   # where to start
+builder.add_conditional_edges(...)        # error checks between steps
+triage_graph = builder.compile()          # compile into a runnable object
+```
+
+**2. Graph is invoked** in `evals/harness.py`:
+```python
+final_state = triage_graph.invoke({
+    "run_id":     "fixture_01_cuda_oom",
+    "raw_log":    raw_log,
+    "git_diff":   git_diff,
+    "commit_sha": "a3f1c2b9",
+    ...
+})
+rca_report = final_state["rca_report"]   # read the final output
+```
+
+`.invoke()` runs the full pipeline — all three agents in sequence — and
+returns the final state after the last agent completes.
+
+---
+
+### Interview line for LangGraph
+
+> "I used LangGraph to build a three-node pipeline where each node is a
+> specialised AI agent. They share a state object — like a baton in a relay
+> race. The Log Analyzer reads the error and extracts structured facts. The
+> Diff Analyzer correlates the code change with those facts. The RCA
+> Synthesizer combines both into the final report. Between each step, a
+> conditional edge checks for errors and short-circuits the pipeline if
+> something went wrong — so a bad log doesn't cascade into a garbage RCA."
+
+---
+
+## 5. Full workflow walkthrough
 
 ### How the MCP tools are called — two modes
 
@@ -311,7 +523,7 @@ Every agent reads from and writes to a shared state object:
 
 ---
 
-## 5. Understanding the eval report
+## 6. Understanding the eval report
 
 When you run `python -m evals.harness --judge both`, you see two tables.
 
@@ -349,7 +561,7 @@ When you run `python -m evals.harness --judge both`, you see two tables.
 
 ---
 
-## 6. The 5 test fixtures explained
+## 7. The 5 test fixtures explained
 
 ### Fixture 1 — CUDA OOM (Out of Memory)
 **What happened:** A developer changed `BATCH_SIZE` from 8 to 64 in `trainer.py`
@@ -465,7 +677,7 @@ or make the BF16 path optional using `torch.cuda.is_bf16_supported()`.
 
 ---
 
-## 7. What the critique column means
+## 8. What the critique column means
 
 The critique is written by the LLM judge after comparing the generated RCA
 against the known correct answer. Here is what each fixture's critique means:
@@ -526,7 +738,7 @@ senior DevOps engineer would suggest.
 
 ---
 
-## 8. What is real vs what is mocked
+## 9. What is real vs what is mocked
 
 A common interview question: *"Is this a real MCP server or did you just write
 mock functions?"*
@@ -552,7 +764,7 @@ swaps data sources without bypassing any pipeline logic.
 
 ---
 
-## 9. How to explain this in 2 minutes
+## 10. How to explain this in 2 minutes
 
 Use this script during the interview:
 
