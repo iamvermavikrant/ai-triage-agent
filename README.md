@@ -38,6 +38,28 @@ GitHub Actions failure
 
 See [docs/architecture.md](docs/architecture.md) for the full design.
 
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| LLM | [Anthropic Claude](https://www.anthropic.com/) (`claude-sonnet-4-6` for agents, `claude-opus-4-8` for judge) |
+| Orchestration | [LangGraph](https://github.com/langchain-ai/langgraph) — stateful multi-agent graph |
+| Tool Protocol | [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) — stdio server |
+| LLM SDK | [anthropic-python](https://github.com/anthropics/anthropic-sdk-python) + [langchain-anthropic](https://github.com/langchain-ai/langchain) |
+| Prompt Management | YAML-based versioned prompt library (`config/prompts.yaml`) |
+| API / Server | [FastAPI](https://fastapi.tiangolo.com/) + [Uvicorn](https://www.uvicorn.org/) |
+| Data Validation | [Pydantic v2](https://docs.pydantic.dev/) |
+| CLI Output | [Rich](https://github.com/Textualize/rich) — styled terminal panels and tables |
+| Logging | [structlog](https://www.structlog.org/) — structured key-value logging |
+| Retry Logic | [Tenacity](https://tenacity.readthedocs.io/) — exponential backoff on LLM calls |
+| HTTP Client | [HTTPX](https://www.python-httpx.org/) — async-ready GitHub API calls |
+| Git Integration | [GitPython](https://gitpython.readthedocs.io/) — local diff extraction |
+| Config | [python-dotenv](https://github.com/theskumar/python-dotenv) |
+| Testing | [pytest](https://pytest.org/) + [pytest-asyncio](https://pytest-asyncio.readthedocs.io/) + [pytest-cov](https://pytest-cov.readthedocs.io/) |
+| Linting / Types | [Ruff](https://docs.astral.sh/ruff/) + [mypy](https://mypy.readthedocs.io/) |
+| CI/CD | GitHub Actions |
+| Language | Python 3.10+ |
+
 ## Quick Start
 
 ```bash
