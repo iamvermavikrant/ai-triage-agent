@@ -10,16 +10,17 @@ Add new questions here as they come up during mock interviews.
 ## Table of Contents
 
 1. [Project Overview](#1-project-overview)
-2. [LangGraph](#2-langgraph)
-3. [MCP Server](#3-mcp-server)
-4. [Agents](#4-agents)
-5. [Evaluation — Custom LLM-as-Judge](#5-evaluation--custom-llm-as-judge)
-6. [Evaluation — DeepEval](#6-evaluation--deepeval)
-7. [Mock Mode](#7-mock-mode)
-8. [CI / GitHub Actions](#8-ci--github-actions)
-9. [GPU / NVIDIA Domain Knowledge](#9-gpu--nvidia-domain-knowledge)
-10. [Design Decisions](#10-design-decisions)
-11. [Tricky Follow-up Questions](#11-tricky-follow-up-questions)
+2. [Agentic AI vs Multi-Agent — the difference](#2-agentic-ai-vs-multi-agent--the-difference)
+3. [LangGraph](#3-langgraph)
+4. [MCP Server](#4-mcp-server)
+5. [Agents](#5-agents)
+6. [Evaluation — Custom LLM-as-Judge](#6-evaluation--custom-llm-as-judge)
+7. [Evaluation — DeepEval](#7-evaluation--deepeval)
+8. [Mock Mode](#8-mock-mode)
+9. [CI / GitHub Actions](#9-ci--github-actions)
+10. [GPU / NVIDIA Domain Knowledge](#10-gpu--nvidia-domain-knowledge)
+11. [Design Decisions](#11-design-decisions)
+12. [Tricky Follow-up Questions](#12-tricky-follow-up-questions)
 
 ---
 
@@ -68,7 +69,81 @@ Add new questions here as they come up during mock interviews.
 
 ---
 
-## 2. LangGraph
+## 2. Agentic AI vs Multi-Agent — the difference
+
+---
+
+**Q: Is this project Agentic AI or a Multi-Agent system?**
+
+> Both — and they describe different things about the same system.
+>
+> **Agentic AI** describes the *style of reasoning* — the AI works through a
+> goal in a sequence of steps where each step's output feeds into the next.
+> It is not answering one question; it is reasoning through a problem
+> step by step.
+>
+> **Multi-Agent** describes the *architecture* — the work is split across
+> multiple specialised AI instances, each with its own role, rather than one
+> agent doing everything.
+>
+> This project is both. It is multi-agent because we have three specialised
+> agents — Log Analyzer, Diff Analyzer, RCA Synthesizer — each with its own
+> system prompt and focused job. It is agentic because they run in a dependent
+> chain where each agent's output is the next agent's input.
+
+---
+
+**Q: What is the difference between Agentic AI and Multi-Agent? Can you give a simple example?**
+
+> The easiest way to think about it:
+>
+> **Agentic AI — A → B → C → D (sequential chain, each depends on previous)**
+> B cannot start until A finishes. C cannot start until B finishes. Remove
+> any one step and the next one breaks. The final result is built up
+> gradually through the chain.
+>
+> **Multi-Agent — A, B, C, D all working independently**
+> Each agent makes its own decisions without waiting for the others. They
+> could run in parallel. Like four employees in four different departments
+> each doing their own job independently.
+>
+> In our project it is A → B → C (agentic chain):
+> - Log Analyzer runs first and produces a structured failure signal
+> - Diff Analyzer *waits* for that output, then uses it to analyse the code change
+> - RCA Synthesizer *waits* for both outputs, then writes the final report
+>
+> And it is multi-agent because A, B, C are separate specialists:
+> - Each has its own system prompt and identity
+> - Each has one focused responsibility
+> - They are not one big Claude call — they are genuinely separate reasoning units
+
+---
+
+**Q: Could you have built this with just one agent instead of three?**
+
+> Yes, technically. You could send the log, the diff, and the instructions
+> all to one Claude call and ask for an RCA. It would work for simple cases.
+> The problem is: one big prompt is hard to debug, hard to improve, and
+> gives Claude too much to do at once. If the RCA is wrong, you don't know
+> whether the error was in reading the log, understanding the diff, or
+> synthesising the report. Three agents give you three checkpoints you can
+> inspect and improve independently.
+
+---
+
+**Q: Is a fixed pipeline really "agentic"? The agents don't decide what to do next.**
+
+> Fair point — fully autonomous agentic AI would have the AI decide at
+> runtime which tool to call next and which path to take. Our pipeline is
+> more structured — LangGraph defines the sequence, not the AI. So the
+> precise term is a **multi-agent pipeline with agentic characteristics**.
+> Each agent reasons independently within its step, but the overall flow is
+> orchestrated by the developer. Saying this distinction out loud shows you
+> understand the architecture deeply.
+
+---
+
+## 3. LangGraph
 
 ---
 
@@ -134,7 +209,7 @@ Add new questions here as they come up during mock interviews.
 
 ---
 
-## 3. MCP Server
+## 4. MCP Server
 
 ---
 
@@ -170,7 +245,7 @@ Add new questions here as they come up during mock interviews.
 
 ---
 
-## 4. Agents
+## 5. Agents
 
 ---
 
@@ -213,7 +288,7 @@ Add new questions here as they come up during mock interviews.
 
 ---
 
-## 5. Evaluation — Custom LLM-as-Judge
+## 6. Evaluation — Custom LLM-as-Judge
 
 ---
 
@@ -260,7 +335,7 @@ Add new questions here as they come up during mock interviews.
 
 ---
 
-## 6. Evaluation — DeepEval
+## 7. Evaluation — DeepEval
 
 ---
 
@@ -304,7 +379,7 @@ Add new questions here as they come up during mock interviews.
 
 ---
 
-## 7. Mock Mode
+## 8. Mock Mode
 
 ---
 
@@ -338,7 +413,7 @@ Add new questions here as they come up during mock interviews.
 
 ---
 
-## 8. CI / GitHub Actions
+## 9. CI / GitHub Actions
 
 ---
 
@@ -362,7 +437,7 @@ Add new questions here as they come up during mock interviews.
 
 ---
 
-## 9. GPU / NVIDIA Domain Knowledge
+## 10. GPU / NVIDIA Domain Knowledge
 
 ---
 
@@ -409,7 +484,7 @@ Add new questions here as they come up during mock interviews.
 
 ---
 
-## 10. Design Decisions
+## 11. Design Decisions
 
 ---
 
@@ -453,7 +528,7 @@ Add new questions here as they come up during mock interviews.
 
 ---
 
-## 11. Tricky Follow-up Questions
+## 12. Tricky Follow-up Questions
 
 ---
 
