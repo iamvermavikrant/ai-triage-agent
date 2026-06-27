@@ -9,6 +9,7 @@ Add new questions here as they come up during mock interviews.
 
 ## Table of Contents
 
+0. [Tell Me About Yourself](#0-tell-me-about-yourself)
 1. [Project Overview](#1-project-overview)
 2. [Agentic AI vs Multi-Agent — the difference](#2-agentic-ai-vs-multi-agent--the-difference)
 3. [LangGraph](#3-langgraph)
@@ -21,6 +22,88 @@ Add new questions here as they come up during mock interviews.
 10. [GPU / NVIDIA Domain Knowledge](#10-gpu--nvidia-domain-knowledge)
 11. [Design Decisions](#11-design-decisions)
 12. [Tricky Follow-up Questions](#12-tricky-follow-up-questions)
+
+---
+
+## 0. Tell Me About Yourself
+
+---
+
+**Q: Tell me about yourself.**
+
+Read this out loud and practise until it sounds natural — not memorised.
+Target: 75-90 seconds.
+
+---
+
+> "I am a Quality Engineering Architect with 15 years of experience building
+> test automation frameworks and quality infrastructure across Healthcare,
+> FinTech, Life Sciences, and Telecom.
+>
+> Through my career I have moved from writing test cases to designing the
+> systems that entire engineering teams depend on — test architecture,
+> CI/CD quality gates, framework governance, release readiness. At Philips
+> I influenced quality practices across 80 stakeholders. At ACS I led the
+> migration of 300 regression tests to Playwright and built a specialised
+> stereochemistry validation framework from scratch.
+>
+> Over the last couple of years I have been deliberately moving into AI
+> quality engineering. I built an AI RAG Test Framework covering hallucination
+> detection, grounding validation, retrieval effectiveness, and prompt
+> injection testing using Python, DeepEval, and ChromaDB. That gave me
+> hands-on experience with LLM evaluation in a real pipeline.
+>
+> More recently I built an AI Triage Agent — a multi-agent system that
+> automatically analyses CI test failures, finds the root cause, and produces
+> a structured RCA report without waiting for an engineer to ask. It uses a
+> real MCP server, a three-agent LangGraph pipeline, and a dual evaluation
+> harness with a custom LLM-as-judge and DeepEval metrics including
+> hallucination detection. I can run it end-to-end right now — no API key
+> needed.
+>
+> What excites me about this NVIDIA role is the scale of the problem. You are
+> building agentic infrastructure that the entire Omniverse engineering
+> organisation depends on — not a productivity tool, but the foundation of
+> how software quality works at NVIDIA. That is exactly the kind of
+> infrastructure work I want to own."
+
+---
+
+**Breakdown — why every sentence is there:**
+
+| Sentence | Why it matters to NVIDIA |
+|----------|-------------------------|
+| "15 years... Healthcare, FinTech, Life Sciences, Telecom" | Shows breadth across regulated, complex domains — not just one industry |
+| "Moved from writing test cases to designing systems" | Shows progression toward Senior/Architect level — they want systems thinkers |
+| "80 stakeholders at Philips" | Shows you can work at enterprise scale with cross-functional impact |
+| "300 Cypress → Playwright migration" | Concrete, quantified delivery — not vague claims |
+| "Stereochemistry validation framework from scratch" | Shows you can build specialised frameworks for complex technical domains — relevant to Omniverse/USD |
+| "AI RAG Test Framework — hallucination, grounding, prompt injection" | Directly matches "clear understanding of where LLMs fail" in the JD |
+| "AI Triage Agent — MCP server, LangGraph, dual eval harness" | Directly matches every bullet in "Ways to stand out" |
+| "Run it end-to-end right now" | Removes doubt — this is working code, not a resume claim |
+| "Foundation of how software quality works at NVIDIA" | Shows you read the JD deeply and understand what they are actually building |
+
+---
+
+**What to do if they ask a follow-up immediately:**
+
+- "Tell me more about the triage agent" → go to section 1 Project Overview
+- "What is LangGraph?" → go to section 3 LangGraph
+- "What is an MCP server?" → go to section 4 MCP Server
+- "Walk me through the evaluation harness" → go to section 6 Custom Judge
+- "What do you know about Omniverse?" → go to jd_mapping.md Part 4 last point
+
+---
+
+**Things NOT to say:**
+
+| Avoid | Why |
+|-------|-----|
+| "I am a quick learner" | Vague, every candidate says it |
+| "I am passionate about quality" | Meaningless without evidence |
+| "I have worked with many tools" | Tool lists without context are forgettable |
+| Reading out your CV chronologically | Interviewer already has your CV — add context, not repetition |
+| Ending without connecting to THIS role | Makes it sound like a generic answer you give everywhere |
 
 ---
 
