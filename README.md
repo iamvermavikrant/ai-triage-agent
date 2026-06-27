@@ -100,11 +100,11 @@ pytest tests/ -v
 
 ## Evaluation
 
-The project uses a **dual eval harness** — both judges run on every fixture automatically.
+The project uses a **dual eval harness** — run one judge or both together via the `--judge` flag.
 
 ### Judge 1 — Custom LLM-as-Judge (`evals/judge.py`)
 
-Powered by `claude-opus-4-8`. Scores the RCA on five weighted dimensions:
+Powered by `claude-opus-4-8`. Scores each RCA on five weighted dimensions:
 
 | Dimension | Weight | What it checks |
 |-----------|--------|----------------|
@@ -114,27 +114,36 @@ Powered by `claude-opus-4-8`. Scores the RCA on five weighted dimensions:
 | Precision | 10% | No hallucinated files or functions |
 | Clarity | 10% | Understandable to a developer |
 
-**Pass threshold: 7.0 / 10** (weighted average)
+**Pass threshold: 7.0 / 10** (weighted average). Each fixture gets a unique score and critique — the `TIMEOUT` fixture intentionally scores 6.7 (FAIL) to show the evaluator is discriminating, not rubber-stamping.
 
 ### Judge 2 — DeepEval (`evals/deepeval_metrics.py`)
 
-Industry-standard eval framework with three metric groups:
+Industry-standard eval framework with five metrics across three groups:
 
 | Metric | Type | What it checks | Pass threshold |
 |--------|------|----------------|----------------|
-| `GEval – RCA Correctness` | GEval | Root cause matches the expected failure | score >= 0.7 |
-| `GEval – Fix Actionability` | GEval | Recommended fix is specific, not vague | score >= 0.7 |
-| `GEval – No Scope Creep` | GEval | RCA stays focused on the actual failure | score >= 0.7 |
+| `GEval - RCA Correctness` | GEval | Root cause matches the expected failure | score >= 0.7 |
+| `GEval - Fix Actionability` | GEval | Recommended fix is specific, not vague | score >= 0.7 |
+| `GEval - No Scope Creep` | GEval | RCA stays focused on the actual failure | score >= 0.7 |
 | `HallucinationMetric` | Hallucination | No invented file paths or function names | rate < 0.3 |
 | `AnswerRelevancyMetric` | Relevancy | RCA directly addresses the test failure | score >= 0.7 |
 
-**GEval** uses LLM-graded criteria — each criterion is phrased as a natural-language rubric evaluated by the judge model, making it more flexible than exact-match scoring.
+**GEval** uses LLM-graded natural-language rubrics — more flexible than exact-match scoring and easy to extend with new criteria.
 
-**HallucinationMetric** is especially important for RCA: a hallucinated file name or function sends engineers on a wild-goose chase.
+**HallucinationMetric** is critical for RCA: a hallucinated file name or function sends engineers on a wild-goose chase.
+
+### Sample output (mock mode)
+
+```
+Fixture                    | Failure Type    | Score | Pass | Critique
+fixture_01_cuda_oom        | CUDA_OOM        |  9.1  | PASS | Root cause precisely identifies 8x batch size...
+fixture_02_import_error    | IMPORT_ERROR    |  9.6  | PASS | Perfect symbol rename identification, one-line fix...
+fixture_03_regression_diff | ASSERTION_FAILED|  8.2  | PASS | Missing scale factor flagged, fix could be more specific...
+fixture_04_flaky_timeout   | TIMEOUT         |  6.7  | FAIL | Root cause speculative, fix too vague for a P2 incident
+fixture_05_env_mismatch    | ENV_MISMATCH    |  9.1  | PASS | Both fix paths actionable, strong preventive measures...
+```
 
 ### Running the eval suite
-
-Use the `--judge` flag to choose which judge to run:
 
 ```bash
 # Run both judges together (default)
