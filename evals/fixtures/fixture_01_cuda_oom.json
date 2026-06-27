@@ -1,0 +1,19 @@
+{
+  "id": "fixture_01_cuda_oom",
+  "description": "CUDA out-of-memory during model training after batch size increase",
+  "input": {
+    "run_id": "cuda_oom",
+    "test_suite": "test_model_training",
+    "branch": "feature/larger-batch",
+    "commit_sha": "a3f1c2b9",
+    "backend_log": "mock",
+    "backend_diff": "mock"
+  },
+  "ground_truth": {
+    "failure_type": "CUDA_OOM",
+    "root_cause": "Batch size was increased from 8 to 64 in trainer.py without corresponding memory budget analysis, causing GPU OOM during the _load_batch forward pass on a 14 GiB allocation attempt.",
+    "priority": "P1",
+    "recommended_fix": "Revert BATCH_SIZE to 8 or implement gradient accumulation (e.g. accumulation_steps=8) to simulate larger effective batch sizes without exceeding VRAM.",
+    "implicated_file": "src/training/trainer.py"
+  }
+}

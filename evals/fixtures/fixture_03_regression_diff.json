@@ -1,0 +1,19 @@
+{
+  "id": "fixture_03_regression_diff",
+  "description": "38.7% throughput regression caused by missing scale factor in attention and 10x LR increase",
+  "input": {
+    "run_id": "regression_diff",
+    "test_suite": "test_benchmarks",
+    "branch": "experiment/einsum-attention",
+    "commit_sha": "8e4d9a1c",
+    "backend_log": "mock",
+    "backend_diff": "mock"
+  },
+  "ground_truth": {
+    "failure_type": "ASSERTION_FAILED",
+    "root_cause": "The einsum refactor in ScaledDotProductAttention removed the 1/sqrt(d_k) scaling factor, causing attention score explosion and degraded throughput. Additionally, the 10x learning rate multiplier destabilizes training.",
+    "priority": "P1",
+    "recommended_fix": "Restore the scale factor: divide einsum output by math.sqrt(d_k). Revert the learning rate multiplier in configure_optimizers.",
+    "implicated_file": "src/attention/scaled_dot_product.py"
+  }
+}

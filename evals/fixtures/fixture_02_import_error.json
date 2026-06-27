@@ -1,0 +1,19 @@
+{
+  "id": "fixture_02_import_error",
+  "description": "ImportError caused by renaming a CUDA attention kernel package",
+  "input": {
+    "run_id": "import_error",
+    "test_suite": "test_inference",
+    "branch": "refactor/attention-v2",
+    "commit_sha": "def56789",
+    "backend_log": "mock",
+    "backend_diff": "mock"
+  },
+  "ground_truth": {
+    "failure_type": "IMPORT_ERROR",
+    "root_cause": "attention.py was updated to import FlashAttentionKernel from 'nvidia_attention', but this package/symbol does not exist. The previous import 'nvidia_flash_attention.FlashAttention' was correct.",
+    "priority": "P0",
+    "recommended_fix": "Revert the import in src/models/attention.py to 'from nvidia_flash_attention import FlashAttention', or install the correct package and update the symbol name.",
+    "implicated_file": "src/models/attention.py"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "id": "fixture_05_env_mismatch",
+  "description": "CUDA version requirement bumped to 12.1 for BF16 but CI node has CUDA 11.8",
+  "input": {
+    "run_id": "env_mismatch",
+    "test_suite": "test_compatibility",
+    "branch": "feature/bf16-support",
+    "commit_sha": "222bbbb3",
+    "backend_log": "mock",
+    "backend_diff": "mock"
+  },
+  "ground_truth": {
+    "failure_type": "ENV_MISMATCH",
+    "root_cause": "cuda_check.py was updated to require CUDA >= 12.1 for BF16 tensor core support, but the CI runner has CUDA 11.8 installed. The assertion fails immediately at environment validation.",
+    "priority": "P1",
+    "recommended_fix": "Update CI runner Docker image to nvidia/cuda:12.1.0-devel-ubuntu22.04, or gate the BF16 path behind a runtime capability check (torch.cuda.is_bf16_supported()) rather than a hard assertion.",
+    "implicated_file": "src/utils/cuda_check.py"
+  }
+}

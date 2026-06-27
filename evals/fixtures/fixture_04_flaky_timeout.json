@@ -1,0 +1,19 @@
+{
+  "id": "fixture_04_flaky_timeout",
+  "description": "Intermittent NCCL timeout on rank 2 during distributed training barrier",
+  "input": {
+    "run_id": "flaky_timeout",
+    "test_suite": "test_distributed",
+    "branch": "main",
+    "commit_sha": "c9d8e7f6",
+    "backend_log": "mock",
+    "backend_diff": "mock"
+  },
+  "ground_truth": {
+    "failure_type": "TIMEOUT",
+    "root_cause": "NCCL collective allreduce barrier timed out on rank 2 after 1800s. This is an intermittent failure (3/20 runs) likely due to GPU thermal throttling or NVLink bandwidth saturation on the affected node.",
+    "priority": "P2",
+    "recommended_fix": "Instrument per-rank timing to identify the slow rank. Add NCCL_DEBUG=INFO and check for link errors. Consider pinning tests to specific GPU nodes or adding retry logic for flaky distributed barriers.",
+    "implicated_file": "src/distributed/nccl_utils.py"
+  }
+}
