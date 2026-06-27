@@ -188,20 +188,49 @@ pytest tests/ -v
 
 ## 4. LangGraph — what it is, why we used it, how it works here
 
+### Is LangGraph installed in this project?
+
+Yes. It is declared as a core dependency in two places:
+
+**`requirements.txt` line 2:**
+```
+langgraph>=0.1.19
+```
+
+**`pyproject.toml` under `[project] dependencies`:**
+```
+"langgraph>=0.1.19",
+```
+
+When you ran `pip install -e .` during setup, this pulled in the LangGraph
+package automatically. You can verify it is installed with:
+```bash
+pip show langgraph
+```
+
+---
+
 ### What is LangGraph in plain English?
 
-Think of LangGraph like an **assembly line in a factory**.
+**Analogy: LangGraph is like a traffic police officer.**
 
-In a car factory, a half-built car moves from Station 1 (engine) → Station 2
-(body) → Station 3 (paint). Each station does one specific job, adds something
-to the car, and passes it to the next. No station does everything — they
-specialise. If the engine station finds a defect, the car is pulled off the
-line early rather than continuing to waste time painting a broken car.
+Imagine a busy intersection where three vehicles need to pass through in a
+specific order — they cannot all go at once. The traffic police officer:
+- Decides **who moves when** (controls the sequence)
+- Carries a **bag that each vehicle adds something to** before handing it back
+  (the shared state)
+- If a vehicle breaks down, **stops all traffic behind it** rather than letting
+  cars pile up on a broken road (conditional edges / error handling)
 
-LangGraph works exactly the same way, but instead of a car, you pass a
-**shared state object** (a Python dictionary). Each station is an **AI agent**
-(a Python function that calls Claude). Each agent reads what it needs from the
-state, adds its output, and passes the updated state forward.
+In our project:
+- The **traffic police** = LangGraph (`graph/workflow.py`)
+- The **three vehicles** = Log Analyzer → Diff Analyzer → RCA Synthesizer
+- The **bag** = `TriageState` (the shared Python dictionary)
+- The **breakdown check** = `_has_errors()` conditional edge after each agent
+
+One important difference from real traffic: our agents run **one at a time in
+sequence** — the next agent does not start until the previous one has fully
+finished. It is a single lane, not an intersection with simultaneous traffic.
 
 ---
 
@@ -355,33 +384,110 @@ that.
 
 ---
 
-### Where is LangGraph called in the code?
+### Which file calls LangGraph and which LangGraph methods are used?
 
-**1. Graph is built once** in `graph/workflow.py`:
+There are exactly **two files** that use LangGraph. Every LangGraph method
+used in the project is listed below.
+
+---
+
+#### File 1 — `src/ai_triage_agent/graph/workflow.py` (builds the graph)
+
+This is the only file that imports and configures LangGraph. Think of it as
+the traffic police officer's rule book — it defines the intersection layout,
+the sequence of signals, and the breakdown rules.
+
 ```python
-builder = StateGraph(TriageState)          # create the graph
-builder.add_node("log_analyzer", log_analyzer_node)   # register agents
-builder.add_node("diff_analyzer", diff_analyzer_node)
-builder.add_node("rca_synthesizer", rca_synthesizer_node)
-builder.set_entry_point("log_analyzer")   # where to start
-builder.add_conditional_edges(...)        # error checks between steps
-triage_graph = builder.compile()          # compile into a runnable object
+from langgraph.graph import END, StateGraph
 ```
 
-**2. Graph is invoked** in `evals/harness.py`:
+| LangGraph method | What it does | Traffic police analogy |
+|-----------------|-------------|----------------------|
+| `StateGraph(TriageState)` | Creates a new graph that will carry `TriageState` as its shared bag | The officer picks up their empty bag and their rulebook |
+| `builder.add_node("log_analyzer", log_analyzer_node)` | Registers an agent as a named stop in the graph | The officer marks "Stop 1: Log Analyzer" on the intersection map |
+| `builder.set_entry_point("log_analyzer")` | Declares which agent runs first | The officer points the first vehicle to Stop 1 |
+| `builder.add_conditional_edges("log_analyzer", _has_errors, {"end": END, "continue": "diff_analyzer"})` | After log_analyzer, check for errors — go to END or continue | Officer checks the bag: is the vehicle broken? If yes, stop all traffic. If no, wave the next vehicle through |
+| `builder.add_edge("rca_synthesizer", END)` | After the last agent, always stop | After the last vehicle passes, the officer closes the intersection |
+| `builder.compile()` | Locks in the graph and makes it runnable | Officer finishes the rulebook and goes to stand at the intersection |
+
+Full code:
 ```python
-final_state = triage_graph.invoke({
+def build_triage_graph() -> StateGraph:
+    builder = StateGraph(TriageState)
+
+    builder.add_node("log_analyzer",    log_analyzer_node)
+    builder.add_node("diff_analyzer",   diff_analyzer_node)
+    builder.add_node("rca_synthesizer", rca_synthesizer_node)
+
+    builder.set_entry_point("log_analyzer")
+
+    builder.add_conditional_edges(
+        "log_analyzer",
+        _has_errors,
+        {"end": END, "continue": "diff_analyzer"},
+    )
+    builder.add_conditional_edges(
+        "diff_analyzer",
+        _has_errors,
+        {"end": END, "continue": "rca_synthesizer"},
+    )
+    builder.add_edge("rca_synthesizer", END)
+
+    return builder.compile()
+
+triage_graph = build_triage_graph()   # compiled once, reused forever
+```
+
+`END` is a LangGraph constant that means "stop the pipeline here."
+
+---
+
+#### File 2 — `evals/harness.py` (runs the graph)
+
+This file does not import LangGraph directly — it just calls `.invoke()` on
+the compiled graph object that was built in `workflow.py`.
+
+```python
+from ai_triage_agent.graph.workflow import triage_graph  # import the compiled graph
+
+final_state = triage_graph.invoke({          # .invoke() is the only call
     "run_id":     "fixture_01_cuda_oom",
     "raw_log":    raw_log,
     "git_diff":   git_diff,
     "commit_sha": "a3f1c2b9",
-    ...
+    "branch":     "feature/larger-batch",
+    "test_suite": "test_model_training",
+    "errors":     [],
+    "completed_nodes": [],
 })
-rca_report = final_state["rca_report"]   # read the final output
+
+rca_report = final_state["rca_report"]       # read what Agent 3 wrote
 ```
 
-`.invoke()` runs the full pipeline — all three agents in sequence — and
-returns the final state after the last agent completes.
+| Method | What it does |
+|--------|-------------|
+| `triage_graph.invoke({...})` | Runs the full pipeline — all three agents in sequence — starting from the entry point and following edges until it reaches END. Returns the final state dictionary. |
+
+`.invoke()` is synchronous — it blocks until the entire pipeline finishes and
+then returns the final state. LangGraph also has `.stream()` for streaming
+step-by-step results, but we use `.invoke()` because we only need the final
+output.
+
+---
+
+#### Summary: all LangGraph imports and methods in the project
+
+| Location | Import / Method | Purpose |
+|----------|----------------|---------|
+| `workflow.py` | `from langgraph.graph import StateGraph` | Graph builder class |
+| `workflow.py` | `from langgraph.graph import END` | Terminal node constant |
+| `workflow.py` | `StateGraph(TriageState)` | Create graph with typed state |
+| `workflow.py` | `.add_node(name, function)` | Register an agent |
+| `workflow.py` | `.set_entry_point(name)` | Set the first agent |
+| `workflow.py` | `.add_conditional_edges(...)` | Add error-check branching |
+| `workflow.py` | `.add_edge(from, to)` | Add unconditional next step |
+| `workflow.py` | `.compile()` | Lock and build the runnable graph |
+| `harness.py` | `.invoke({...})` | Run the full pipeline, get final state |
 
 ---
 
