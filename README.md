@@ -20,20 +20,22 @@ When a test suite fails in CI, the AI Triage Agent:
 
 ```
 GitHub Actions failure
-        │
-        ▼
+        |
+        v
   MCP Tool Server
-  ├── fetch_test_logs  (GitHub Actions / local / mock)
-  └── get_git_diff     (GitHub API / local git / mock)
-        │
-        ▼
+  |-- fetch_test_logs  (GitHub Actions / local / mock)
+  +-- get_git_diff     (GitHub API / local git / mock)
+        |
+        v
   LangGraph Workflow
-  ├── Log Analyzer    →  structured failure signals
-  ├── Diff Analyzer   →  implicated files + relevance scores
-  └── RCA Synthesizer →  P0–P3 report with fix + owner
-        │
-        ▼
-  Eval Harness (5 fixtures × LLM-as-judge scoring)
+  |-- Log Analyzer    -->  structured failure signals
+  |-- Diff Analyzer   -->  implicated files + relevance scores
+  +-- RCA Synthesizer -->  P0-P3 report with fix + owner
+        |
+        v
+  Dual Eval Harness
+  |-- Custom LLM-as-Judge  (5 weighted dimensions, Claude Opus)
+  +-- DeepEval             (GEval x3 + Hallucination + Relevancy)
 ```
 
 See [docs/architecture.md](docs/architecture.md) for the full design.
@@ -96,13 +98,53 @@ python scripts/run_triage.py \
 pytest tests/ -v
 ```
 
-## Running Evals
+## Evaluation
+
+The project uses a **dual eval harness** — both judges run on every fixture automatically.
+
+### Judge 1 — Custom LLM-as-Judge (`evals/judge.py`)
+
+Powered by `claude-opus-4-8`. Scores the RCA on five weighted dimensions:
+
+| Dimension | Weight | What it checks |
+|-----------|--------|----------------|
+| Accuracy | 35% | Root cause matches ground truth |
+| Actionability | 25% | Fix is specific and executable |
+| Completeness | 20% | All failure signals are addressed |
+| Precision | 10% | No hallucinated files or functions |
+| Clarity | 10% | Understandable to a developer |
+
+**Pass threshold: 7.0 / 10** (weighted average)
+
+### Judge 2 — DeepEval (`evals/deepeval_metrics.py`)
+
+Industry-standard eval framework with three metric groups:
+
+| Metric | Type | What it checks | Pass threshold |
+|--------|------|----------------|----------------|
+| `GEval – RCA Correctness` | GEval | Root cause matches the expected failure | score >= 0.7 |
+| `GEval – Fix Actionability` | GEval | Recommended fix is specific, not vague | score >= 0.7 |
+| `GEval – No Scope Creep` | GEval | RCA stays focused on the actual failure | score >= 0.7 |
+| `HallucinationMetric` | Hallucination | No invented file paths or function names | rate < 0.3 |
+| `AnswerRelevancyMetric` | Relevancy | RCA directly addresses the test failure | score >= 0.7 |
+
+**GEval** uses LLM-graded criteria — each criterion is phrased as a natural-language rubric evaluated by the judge model, making it more flexible than exact-match scoring.
+
+**HallucinationMetric** is especially important for RCA: a hallucinated file name or function sends engineers on a wild-goose chase.
+
+### Running the full eval suite
 
 ```bash
+# Mock mode (no API key needed)
 python -m evals.harness
+
+# Real mode (requires ANTHROPIC_API_KEY, set MOCK_LLM=false in .env)
+MOCK_LLM=false python -m evals.harness
 ```
 
-Scores each fixture against ground truth using an LLM judge. Pass threshold: **7.0 / 10**. See [docs/eval_methodology.md](docs/eval_methodology.md).
+Results are printed as two Rich tables (one per judge) and saved to `evals/reports/eval_report_{timestamp}.json`.
+
+See [docs/eval_methodology.md](docs/eval_methodology.md) for fixture details and scoring rationale.
 
 ## MCP Server
 
@@ -143,13 +185,15 @@ ai-triage-agent/
 │       └── prompt_loader.py      # YAML prompt loader
 ├── evals/
 │   ├── fixtures/                 # 5 JSON test scenarios
-│   ├── harness.py                # Eval runner
-│   ├── judge.py                  # LLM-as-judge scorer
-│   └── report.py                 # Rich console + JSON output
+│   ├── harness.py                # Dual eval runner (both judges)
+│   ├── judge.py                  # Custom LLM-as-judge (5 weighted dims)
+│   ├── deepeval_metrics.py       # DeepEval: GEval + Hallucination + Relevancy
+│   └── report.py                 # Rich console tables + JSON persistence
 ├── tests/
 │   ├── test_mcp_tools.py
 │   ├── test_agents.py
-│   └── test_graph.py
+│   ├── test_graph.py
+│   └── test_deepeval.py          # DeepEval unit + integration tests
 ├── scripts/
 │   └── run_triage.py             # CLI entry point
 ├── pyproject.toml
@@ -162,11 +206,12 @@ All prompts are managed in [`config/prompts.yaml`](config/prompts.yaml) with ver
 
 | Env Variable | Default | Description |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | — | Required |
-| `TRIAGE_MODEL` | `claude-sonnet-4-6` | Model for pipeline agents |
-| `JUDGE_MODEL` | `claude-opus-4-8` | Model for eval judge |
-| `GITHUB_TOKEN` | — | Required for real CI logs |
-| `GITHUB_REPO` | `owner/repo` | Target repository |
+| `ANTHROPIC_API_KEY` | — | Required for real LLM calls |
+| `MOCK_LLM` | `false` | Set `true` to run entire pipeline without any API key |
+| `TRIAGE_MODEL` | `claude-sonnet-4-6` | Model for pipeline agents (Log/Diff/RCA) |
+| `JUDGE_MODEL` | `claude-opus-4-8` | Model for custom LLM-as-judge eval |
+| `GITHUB_TOKEN` | — | Required for real CI log + diff fetching |
+| `GITHUB_REPO` | `owner/repo` | Target repository in `owner/repo` format |
 
 ## License
 
