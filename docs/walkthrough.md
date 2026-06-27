@@ -187,28 +187,66 @@ pytest tests/ -v
 
 ## 4. Full workflow walkthrough
 
-Here is exactly what happens when you run `python -m evals.harness`:
+### How the MCP tools are called — two modes
+
+This is a common interview question, so understand it clearly before reading
+the workflow steps below.
+
+**Mode 1 — Eval harness (`python -m evals.harness`)**
+
+The harness imports the tool functions directly as Python and calls them inline.
+The MCP server process is never started. This is intentional — the harness is
+an internal evaluation pipeline, not an AI client.
+
+```
+harness.py
+  └── from ai_triage_agent.mcp.tools.fetch_test_logs import fetch_test_logs
+  └── from ai_triage_agent.mcp.tools.get_git_diff import get_git_diff
+  └── raw_log  = fetch_test_logs(run_id=..., backend="mock")   # plain Python call
+  └── git_diff = get_git_diff(commit_sha=..., backend="mock")  # plain Python call
+```
+
+**Mode 2 — MCP server (`python -m ai_triage_agent.mcp.server`)**
+
+The server starts as a separate process and listens for MCP protocol messages
+over stdio. An external AI client (e.g. Claude Desktop) connects and calls the
+tools through the MCP protocol. The server internally calls the same tool
+functions as above.
+
+```
+Claude Desktop ──MCP protocol (stdio)──> server.py
+                                            └── fetch_test_logs()   # same function
+                                            └── get_git_diff()      # same function
+```
+
+The tool logic lives in `mcp/tools/` and is shared by both modes. The server is
+a protocol wrapper — it does not duplicate any logic.
+
+**Interview line:**
+> "When I run the eval harness, the tools are called directly as Python imports
+> — no server process involved. The MCP server is a separate entry point for
+> when a real AI client needs to call those tools over the protocol. Same
+> underlying functions, two different callers."
+
+---
+
+### Step-by-step: what happens when you run `python -m evals.harness`
 
 ```
 Step 1: Load fixtures
   └── Read 5 JSON files from evals/fixtures/
       Each has: input (run_id, commit, branch) + ground_truth (correct RCA)
 
-Step 2: For each fixture — fetch inputs via MCP tools
-  │
-  │   The MCP server (src/ai_triage_agent/mcp/server.py) is REAL.
-  │   It follows the Model Context Protocol spec and exposes two registered tools.
-  │   backend="mock" swaps the data source — the server itself never changes.
-  │
+Step 2: For each fixture — call MCP tool functions directly (no server)
   ├── fetch_test_logs(run_id="cuda_oom", backend="mock")
-  │     Production: calls your CI system API
-  │     Demo:       returns hardcoded realistic error log text
-  │     Result:     "CUDA out of memory at trainer.py:312 — 14 GiB requested, 12 GiB free"
+  │     Production backend: calls your CI system API
+  │     Mock backend:       returns hardcoded realistic error log text
+  │     Result: "CUDA out of memory at trainer.py:312 — 14 GiB requested, 12 GiB free"
   │
   └── get_git_diff(commit_sha="a3f1c2b9", backend="mock")
-        Production: calls GitHub API / git CLI
-        Demo:       returns hardcoded unified diff
-        Result:     "- BATCH_SIZE = 8\n+ BATCH_SIZE = 64"
+        Production backend: calls GitHub API / git CLI
+        Mock backend:       returns hardcoded unified diff
+        Result: "- BATCH_SIZE = 8\n+ BATCH_SIZE = 64"
 
 Step 3: Run the LangGraph triage pipeline
   │
@@ -495,8 +533,9 @@ mock functions?"*
 
 | Component | Real or Mock? | Details |
 |-----------|--------------|---------|
-| MCP server (`mcp/server.py`) | **Real** | Follows the MCP stdio spec; any MCP client can connect |
+| MCP server (`mcp/server.py`) | **Real** | Follows MCP stdio spec; any MCP client can connect to it |
 | Tool registration + JSON schema | **Real** | `fetch_test_logs` and `get_git_diff` are proper MCP tools |
+| MCP server called by harness? | **No** | Harness imports tool functions directly — no server process |
 | `fetch_test_logs` data | Mock in demo | Production: calls your CI system API |
 | `get_git_diff` data | Mock in demo | Production: calls GitHub API or `git show` |
 | LangGraph pipeline | **Real** | Three agents, conditional edges, shared state |
@@ -506,9 +545,10 @@ mock functions?"*
 | Eval harness (5 fixtures) | **Real** | Fixtures, scoring logic, report tables are all real code |
 | GitHub Actions CI | **Real** | `.github/workflows/ci.yml` runs lint, tests, and triage on failure |
 
-**The key point:** Everything is architected for production. Mock mode is a
-single environment variable (`MOCK_LLM=true`) that swaps data sources — it
-does not bypass, stub, or shortcut any of the actual pipeline logic.
+**The key point:** Everything is architected for production. The MCP server is
+a real, connectable process — the harness just doesn't go through it because
+it is an internal eval pipeline, not an AI client. Mock mode (`MOCK_LLM=true`)
+swaps data sources without bypassing any pipeline logic.
 
 ---
 
