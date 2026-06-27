@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Any
 
 import structlog
+from dotenv import load_dotenv
+
+load_dotenv()  # picks up MOCK_LLM, ANTHROPIC_API_KEY, etc. from .env
 
 from ai_triage_agent.graph.workflow import triage_graph
 from ai_triage_agent.mcp.tools.fetch_test_logs import fetch_test_logs
