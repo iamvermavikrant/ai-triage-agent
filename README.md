@@ -55,6 +55,7 @@ See [docs/architecture.md](docs/architecture.md) for the full design.
 | HTTP Client | [HTTPX](https://www.python-httpx.org/) — async-ready GitHub API calls |
 | Git Integration | [GitPython](https://gitpython.readthedocs.io/) — local diff extraction |
 | Config | [python-dotenv](https://github.com/theskumar/python-dotenv) |
+| Eval Framework | [DeepEval](https://docs.confident-ai.com/) — GEval, HallucinationMetric, AnswerRelevancyMetric |
 | Testing | [pytest](https://pytest.org/) + [pytest-asyncio](https://pytest-asyncio.readthedocs.io/) + [pytest-cov](https://pytest-cov.readthedocs.io/) |
 | Linting / Types | [Ruff](https://docs.astral.sh/ruff/) + [mypy](https://mypy.readthedocs.io/) |
 | CI/CD | GitHub Actions |

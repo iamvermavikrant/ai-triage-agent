@@ -12,6 +12,7 @@ import structlog
 from ai_triage_agent.graph.workflow import triage_graph
 from ai_triage_agent.mcp.tools.fetch_test_logs import fetch_test_logs
 from ai_triage_agent.mcp.tools.get_git_diff import get_git_diff
+from evals.deepeval_metrics import run_deepeval
 from evals.judge import judge_rca
 from evals.report import print_report, save_report
 
@@ -29,7 +30,7 @@ def load_fixtures() -> list[dict[str, Any]]:
 
 
 def run_fixture(fixture: dict[str, Any]) -> dict[str, Any]:
-    """Execute one fixture end-to-end and return the scored result."""
+    """Execute one fixture end-to-end and return scores from both judges."""
     inp = fixture["input"]
     fid = fixture["id"]
     log.info("harness.fixture_start", id=fid)
@@ -63,23 +64,42 @@ def run_fixture(fixture: dict[str, Any]) -> dict[str, Any]:
     rca_report = final_state.get("rca_report", {})
     errors = final_state.get("errors", [])
 
-    # ── Judge ───────────────────────────────────────────────────────────
+    _empty_judgment = {
+        "scores": {},
+        "weighted_total": 0.0,
+        "pass": False,
+        "critique": f"Pipeline errors: {errors}",
+    }
+    _empty_deepeval = {
+        "geval": {},
+        "hallucination": {},
+        "answer_relevancy": {},
+        "deepeval_overall_pass": False,
+        "deepeval_summary": f"Skipped — pipeline errors: {errors}",
+    }
+
     if rca_report and not errors:
+        # ── Judge 1: custom LLM-as-judge ───────────────────────────────
         judgment = judge_rca(rca_report, fixture["ground_truth"])
+
+        # ── Judge 2: DeepEval metrics ───────────────────────────────────
+        deepeval_result = run_deepeval(
+            rca_report=rca_report,
+            ground_truth=fixture["ground_truth"],
+            raw_log=raw_log,
+            git_diff=git_diff,
+        )
     else:
-        judgment = {
-            "scores": {},
-            "weighted_total": 0.0,
-            "pass": False,
-            "critique": f"Pipeline errors: {errors}",
-        }
+        judgment = _empty_judgment
+        deepeval_result = _empty_deepeval
 
     return {
         "fixture_id": fid,
         "description": fixture.get("description", ""),
         "elapsed_s": elapsed,
         "rca_report": rca_report,
-        "judgment": judgment,
+        "judgment": judgment,           # custom LLM-as-judge
+        "deepeval": deepeval_result,    # DeepEval metrics
         "pipeline_errors": errors,
     }
 
@@ -105,23 +125,40 @@ def run_all_evals(fixtures: list[dict[str, Any]] | None = None) -> dict[str, Any
                     "pass": False,
                     "critique": f"Unhandled exception: {exc}",
                 },
+                "deepeval": {
+                    "geval": {},
+                    "hallucination": {},
+                    "answer_relevancy": {},
+                    "deepeval_overall_pass": False,
+                    "deepeval_summary": f"Unhandled exception: {exc}",
+                },
                 "pipeline_errors": [str(exc)],
             }
         results.append(result)
 
     total = len(results)
-    passed = sum(1 for r in results if r["judgment"]["pass"])
+
+    # ── Custom judge aggregate ──────────────────────────────────────────
+    custom_passed = sum(1 for r in results if r["judgment"]["pass"])
     avg_score = (
         sum(r["judgment"]["weighted_total"] for r in results) / total if total else 0.0
     )
 
+    # ── DeepEval aggregate ──────────────────────────────────────────────
+    deepeval_passed = sum(1 for r in results if r["deepeval"]["deepeval_overall_pass"])
+
     return {
         "summary": {
             "total": total,
-            "passed": passed,
-            "failed": total - passed,
-            "pass_rate": round(passed / total, 3) if total else 0.0,
-            "avg_score": round(avg_score, 2),
+            # Custom judge
+            "custom_passed": custom_passed,
+            "custom_failed": total - custom_passed,
+            "custom_pass_rate": round(custom_passed / total, 3) if total else 0.0,
+            "custom_avg_score": round(avg_score, 2),
+            # DeepEval
+            "deepeval_passed": deepeval_passed,
+            "deepeval_failed": total - deepeval_passed,
+            "deepeval_pass_rate": round(deepeval_passed / total, 3) if total else 0.0,
         },
         "results": results,
     }
@@ -129,7 +166,9 @@ def run_all_evals(fixtures: list[dict[str, Any]] | None = None) -> dict[str, Any
 
 if __name__ == "__main__":
     import structlog
-    structlog.configure(processors=[structlog.dev.ConsoleRenderer()])
+    structlog.configure(
+        processors=[structlog.stdlib.add_log_level, structlog.processors.KeyValueRenderer()]
+    )
 
     report = run_all_evals()
     print_report(report)

@@ -92,15 +92,20 @@ _MOCK_JUDGE = {
 
 
 def _mock_response(system: str) -> dict[str, Any]:
-    """Pick the right mock payload based on which agent is calling."""
-    if "log analyst" in system.lower() or "failure signals" in system.lower():
-        return _MOCK_LOG_ANALYSIS
-    if "change-impact" in system.lower() or "git diff" in system.lower():
-        return _MOCK_DIFF_ANALYSIS
-    if "root cause analysis" in system.lower() or "rca" in system.lower():
-        return _MOCK_RCA
-    if "impartial evaluator" in system.lower() or "judge" in system.lower():
+    """Pick the right mock payload based on which agent is calling.
+
+    Order matters: judge check must come before rca_synthesizer because
+    the judge prompt also contains the word 'RCA'.
+    """
+    s = system.lower()
+    if "impartial evaluator" in s:
         return _MOCK_JUDGE
+    if "log analyst" in s or "failure signals" in s:
+        return _MOCK_LOG_ANALYSIS
+    if "change-impact" in s or "git diff" in s:
+        return _MOCK_DIFF_ANALYSIS
+    if "root cause analysis" in s or "rca synthesizer" in s or "principal sdet" in s:
+        return _MOCK_RCA
     return {"mock": True, "note": "unrecognised agent — returning empty mock"}
 
 
