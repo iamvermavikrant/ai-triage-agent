@@ -29,8 +29,18 @@ def load_fixtures() -> list[dict[str, Any]]:
     return fixtures
 
 
-def run_fixture(fixture: dict[str, Any]) -> dict[str, Any]:
-    """Execute one fixture end-to-end and return scores from both judges."""
+def run_fixture(
+    fixture: dict[str, Any],
+    run_custom: bool = True,
+    run_deepeval_judge: bool = True,
+) -> dict[str, Any]:
+    """Execute one fixture end-to-end and return scores from selected judges.
+
+    Args:
+        fixture: Loaded fixture dict.
+        run_custom: Whether to run the custom LLM-as-judge.
+        run_deepeval_judge: Whether to run DeepEval metrics.
+    """
     inp = fixture["input"]
     fid = fixture["id"]
     log.info("harness.fixture_start", id=fid)
@@ -78,40 +88,56 @@ def run_fixture(fixture: dict[str, Any]) -> dict[str, Any]:
         "deepeval_summary": f"Skipped — pipeline errors: {errors}",
     }
 
-    if rca_report and not errors:
-        # ── Judge 1: custom LLM-as-judge ───────────────────────────────
-        judgment = judge_rca(rca_report, fixture["ground_truth"])
+    judgment = _empty_judgment
+    deepeval_result = _empty_deepeval
 
-        # ── Judge 2: DeepEval metrics ───────────────────────────────────
-        deepeval_result = run_deepeval(
-            rca_report=rca_report,
-            ground_truth=fixture["ground_truth"],
-            raw_log=raw_log,
-            git_diff=git_diff,
-        )
-    else:
-        judgment = _empty_judgment
-        deepeval_result = _empty_deepeval
+    if rca_report and not errors:
+        if run_custom:
+            # ── Judge 1: custom LLM-as-judge ───────────────────────────
+            judgment = judge_rca(rca_report, fixture["ground_truth"])
+
+        if run_deepeval_judge:
+            # ── Judge 2: DeepEval metrics ───────────────────────────────
+            deepeval_result = run_deepeval(
+                rca_report=rca_report,
+                ground_truth=fixture["ground_truth"],
+                raw_log=raw_log,
+                git_diff=git_diff,
+            )
 
     return {
         "fixture_id": fid,
         "description": fixture.get("description", ""),
         "elapsed_s": elapsed,
         "rca_report": rca_report,
-        "judgment": judgment,           # custom LLM-as-judge
-        "deepeval": deepeval_result,    # DeepEval metrics
+        "judgment": judgment,
+        "deepeval": deepeval_result,
         "pipeline_errors": errors,
     }
 
 
-def run_all_evals(fixtures: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-    """Run the full eval suite and return an aggregate report."""
+def run_all_evals(
+    fixtures: list[dict[str, Any]] | None = None,
+    run_custom: bool = True,
+    run_deepeval_judge: bool = True,
+) -> dict[str, Any]:
+    """Run the full eval suite and return an aggregate report.
+
+    Args:
+        fixtures: Override fixture list (defaults to all fixtures/ files).
+        run_custom: Enable the custom LLM-as-judge scorer.
+        run_deepeval_judge: Enable DeepEval metrics.
+    """
     all_fixtures = fixtures or load_fixtures()
     results = []
 
     for fixture in all_fixtures:
         try:
-            result = run_fixture(fixture)
+            result = run_fixture(
+                fixture,
+                run_custom=run_custom,
+                run_deepeval_judge=run_deepeval_judge,
+            )
         except Exception as exc:
             log.exception("harness.fixture_error", id=fixture.get("id"))
             result = {
@@ -165,11 +191,30 @@ def run_all_evals(fixtures: list[dict[str, Any]] | None = None) -> dict[str, Any
 
 
 if __name__ == "__main__":
+    import argparse
     import structlog
+
     structlog.configure(
         processors=[structlog.stdlib.add_log_level, structlog.processors.KeyValueRenderer()]
     )
 
-    report = run_all_evals()
+    parser = argparse.ArgumentParser(description="AI Triage Agent — Eval Harness")
+    parser.add_argument(
+        "--judge",
+        choices=["custom", "deepeval", "both"],
+        default="both",
+        help=(
+            "Which judge(s) to run:\n"
+            "  custom   — custom LLM-as-judge only (5 weighted dimensions)\n"
+            "  deepeval — DeepEval metrics only (GEval + Hallucination + Relevancy)\n"
+            "  both     — run both judges (default)"
+        ),
+    )
+    args = parser.parse_args()
+
+    run_custom = args.judge in ("custom", "both")
+    run_deepeval_judge = args.judge in ("deepeval", "both")
+
+    report = run_all_evals(run_custom=run_custom, run_deepeval_judge=run_deepeval_judge)
     print_report(report)
     save_report(report)
