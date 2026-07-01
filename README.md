@@ -38,7 +38,7 @@ GitHub Actions failure
   +-- DeepEval             (GEval x3 + Hallucination + Relevancy)
 ```
 
-See [docs/architecture.md](docs/architecture.md) for the full design.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
 
 ## Tech Stack
 
@@ -191,7 +191,7 @@ ai-triage-agent/
 ├── config/
 │   └── prompts.yaml              # Versioned system/user prompts
 ├── docs/
-│   ├── architecture.md
+├── ARCHITECTURE.md
 │   ├── mcp_setup.md
 │   └── eval_methodology.md
 ├── src/ai_triage_agent/
